@@ -1,4 +1,5 @@
 const express = require("express");
+const { updateAdmin } = require("../controllers/authController");
 const router = express.Router();
 const {
   registerUser,
@@ -23,12 +24,18 @@ router.get("/check-auth", authMiddleware, (req, res) => {
     user,
   });
 });
-// only super-admin can access create-admin route
+// only super-admin can access these routes
 router.post(
   "/create-admin",
   authMiddleware,
   requireRole("super-admin"),
   createAdmin
+);
+router.put(
+  "/update-admin",
+  authMiddleware,
+  requireRole("super-admin"),
+  updateAdmin
 );
 
 module.exports = router;

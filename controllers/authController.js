@@ -1,5 +1,6 @@
 const User = require("../models/User");
 const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
 
 // register controller
 exports.registerUser = async (req, res) => {
@@ -182,5 +183,33 @@ exports.createAdmin = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Update admin details (Only super-admin)
+exports.updateAdmin = async (req, res) => {
+  try {
+    const { email, newPassword, newRole } = req.body;
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({ message: "Admin not found" });
+    }
+
+    if (newPassword) {
+      const salt = await bcrypt.genSalt(10);
+      user.password = await bcrypt.hash(newPassword, salt);
+    }
+
+    if (newRole) {
+      user.role = newRole;
+    }
+
+    await user.save();
+
+    res.status(200).json({ message: "Admin updated successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 };
