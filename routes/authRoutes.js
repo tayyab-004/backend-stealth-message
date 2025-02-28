@@ -1,5 +1,5 @@
 const express = require("express");
-const { updateAdmin } = require("../controllers/authController");
+const { updateAdmin, refreshAccessToken } = require("../controllers/authController");
 const router = express.Router();
 const {
   registerUser,
@@ -13,6 +13,7 @@ const { requireRole } = require("../middleware/roleMiddleware");
 // Public routes
 router.post("/register", registerUser);
 router.post("/login", loginUser);
+router.get("/refresh", refreshAccessToken);
 
 // Protected routes
 router.post("/logout", logoutUser);
@@ -24,6 +25,7 @@ router.get("/check-auth", authMiddleware, (req, res) => {
     user,
   });
 });
+
 // only super-admin can access these routes
 router.post(
   "/create-admin",
@@ -31,6 +33,7 @@ router.post(
   requireRole("super-admin"),
   createAdmin
 );
+
 router.put(
   "/update-admin",
   authMiddleware,

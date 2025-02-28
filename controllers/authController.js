@@ -4,7 +4,6 @@ const bcrypt = require("bcryptjs");
 
 // register controller
 exports.registerUser = async (req, res) => {
-  console.log("Received Data: ", req.body);
   const {
     firstName,
     lastName,
@@ -46,20 +45,11 @@ exports.registerUser = async (req, res) => {
 
     await user.save();
 
-    const token = jwt.sign(
-      { id: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: "1h",
-      }
-    );
-
     res.status(201).json({
       _id: user._id,
       firstName: user.firstName,
       lastName: user.lastName,
       email: user.email,
-      token,
     });
   } catch (error) {
     console.error(error);
@@ -83,25 +73,49 @@ exports.loginUser = async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: user._id, role: user.role },
-      process.env.JWT_SECRET,
       {
-        expiresIn: "1h",
-      }
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "15m", }
     );
 
-    res.cookie("token", token, {
+    const refreshToken = jwt.sign(
+      {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+      },
+      process.env.REFRESH_TOKEN_SECRET,
+      { expiresIn: "7d", }
+    );
+
+    res.cookie("accessToken", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
-      maxAge: 3600000,
+      maxAge: 15 * 60 * 1000,
     });
 
-    res.json({
-      _id: user._id,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email,
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    return res.json({
+      message: "User successfully loggedIn",
+      user: {
+        _id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+      },
       token,
     });
   } catch (error) {
@@ -112,17 +126,19 @@ exports.loginUser = async (req, res) => {
 
 // Logout user
 exports.logoutUser = async (req, res) => {
-  res.clearCookie("token").json({
+  res.clearCookie("accessToken", "refreshToken");
+
+  res.json({
     success: true,
     message: "Logout Successfully!",
   });
 };
 
-// Auth middleware
-exports.authMiddleware = async (req, res, next) => {
-  const token = req.cookies.token;
+// Refresh the access token
+exports.refreshAccessToken = async (req, res) => {
+  const refreshToken = req.cookies.refreshToken;
 
-  if (!token) {
+  if (!refreshToken) {
     return res.status(401).json({
       success: false,
       message: "Unauthorized User!",
@@ -130,7 +146,48 @@ exports.authMiddleware = async (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+
+    const newAccessToken = jwt.sign(
+      { userId: decoded.userId },
+      process.env.JWT_SECRET,
+      { expiresIn: "15m" }
+    );
+
+    res.cookie("accessToken", newAccessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 15 * 60 * 1000,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Token Refreshed",
+      accessToken: newAccessToken,
+    });
+
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      message: error.message || "Unauthorized User!",
+    });
+  }
+};
+
+// Auth middleware
+exports.authMiddleware = async (req, res, next) => {
+  const accessToken = req.cookies.accessToken;
+
+  if (!accessToken) {
+    return res.status(401).json({
+      success: false,
+      message: "Unauthorized User!",
+    });
+  }
+
+  try {
+    const decoded = jwt.verify(accessToken, process.env.JWT_SECRET);
     req.user = decoded;
     next();
   } catch (error) {
